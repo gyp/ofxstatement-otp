@@ -32,7 +32,10 @@ setup(name='ofxstatement-otp',
       namespace_packages=["ofxstatement", "ofxstatement.plugins"],
       entry_points={
           'ofxstatement':
-          ['otp = ofxstatement.plugins.otp:OtpPlugin']
+          [
+              'otp = ofxstatement.plugins.otp:OtpPlugin',
+              'otp_credit = ofxstatement.plugins.otp_credit:OtpCreditPlugin'
+          ]
           },
       install_requires=['ofxstatement'],
       include_package_data=True,
