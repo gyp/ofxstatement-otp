@@ -94,7 +94,10 @@ class OtpParser(object):
         sline.memo = rmtinf.text if rmtinf.text else ''
 
         addtlinf_node = _find(ntry, 'NtryDtls/TxDtls/AddtlTxInf')
-        addtlinf = self._parse_addtlinf(addtlinf_node)
+        if addtlinf_node is not None and addtlinf_node.text is not None:
+            addtlinf = self._parse_addtlinf(addtlinf_node)
+        else:
+            addtlinf = ''
 
         if 'VÁSÁRLÁS KÁRTYÁVAL' == addtlinf and not sline.payee:
             sline.payee = _trim_payee(sline.memo)
@@ -117,11 +120,17 @@ class OtpParser(object):
             return datetime.datetime.strptime(dttm.text, "%Y-%m-%dT%H:%M:%S")
 
     def _parse_amount(self, amtnode):
-        return float(amtnode.text)
+        if amtnode.text is not None:
+            return float(amtnode.text)
+        else:
+            return 0
 
     def _parse_addtlinf(self, addtlinf):
         string = '<root>' + html.unescape(addtlinf.text) + '</root>'
-        return ET.fromstring(string).find('narr').text
+        for infonode_label in ['narr', 'inf']:
+            if ET.fromstring(string).find(infonode_label) is not None:
+                return ET.fromstring(string).find(infonode_label).text
+        return None
 
 
 def _toxpath(spath):
