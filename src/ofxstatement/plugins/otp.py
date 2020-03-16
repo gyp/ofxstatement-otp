@@ -118,11 +118,12 @@ class OtpParser(object):
         dt = _find(dtnode, 'Dt')
         dttm = _find(dtnode, 'DtTm')
 
-        if dt is not None:
+        if dt is not None and dt.text is not None:
             return datetime.datetime.strptime(dt.text, "%Y-%m-%d")
         else:
             assert dttm is not None
-            return datetime.datetime.strptime(dttm.text, "%Y-%m-%dT%H:%M:%S")
+            return datetime.datetime.fromisoformat(dttm.text, "%Y-%m-%dT%H:%M:%S")
+
 
     def _parse_amount(self, amtnode):
         if amtnode.text is not None:
