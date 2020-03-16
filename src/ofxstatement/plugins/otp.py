@@ -61,9 +61,14 @@ class OtpParser(object):
     def _parse_lines(self, tree):
         for ntry in _findall(tree, 'Rpt/Ntry'):
             sline = self._parse_line(ntry)
-            self.statement.lines.append(sline)
+            if sline is not None:
+                self.statement.lines.append(sline)
 
     def _parse_line(self, ntry):
+        # don't try to parse pending entries, too many items missing
+        if _find(ntry, 'Sts').text == 'PDNG':
+            return None
+
         sline = StatementLine()
 
         crdeb = _find(ntry, 'CdtDbtInd').text
