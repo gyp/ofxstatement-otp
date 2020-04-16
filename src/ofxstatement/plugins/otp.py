@@ -61,9 +61,14 @@ class OtpParser(object):
     def _parse_lines(self, tree):
         for ntry in _findall(tree, 'Rpt/Ntry'):
             sline = self._parse_line(ntry)
-            self.statement.lines.append(sline)
+            if sline is not None:
+                self.statement.lines.append(sline)
 
     def _parse_line(self, ntry):
+        # don't try to parse pending entries, too many items missing
+        if _find(ntry, 'Sts').text == 'PDNG':
+            return None
+
         sline = StatementLine()
 
         crdeb = _find(ntry, 'CdtDbtInd').text
@@ -94,7 +99,10 @@ class OtpParser(object):
         sline.memo = rmtinf.text if rmtinf.text else ''
 
         addtlinf_node = _find(ntry, 'NtryDtls/TxDtls/AddtlTxInf')
-        addtlinf = self._parse_addtlinf(addtlinf_node)
+        if addtlinf_node is not None and addtlinf_node.text is not None:
+            addtlinf = self._parse_addtlinf(addtlinf_node)
+        else:
+            addtlinf = ''
 
         if 'VÁSÁRLÁS KÁRTYÁVAL' == addtlinf and not sline.payee:
             sline.payee = _trim_payee(sline.memo)
@@ -110,18 +118,25 @@ class OtpParser(object):
         dt = _find(dtnode, 'Dt')
         dttm = _find(dtnode, 'DtTm')
 
-        if dt is not None:
+        if dt is not None and dt.text is not None:
             return datetime.datetime.strptime(dt.text, "%Y-%m-%d")
         else:
             assert dttm is not None
-            return datetime.datetime.strptime(dttm.text, "%Y-%m-%dT%H:%M:%S")
+            return datetime.datetime.fromisoformat(dttm.text, "%Y-%m-%dT%H:%M:%S")
+
 
     def _parse_amount(self, amtnode):
-        return float(amtnode.text)
+        if amtnode.text is not None:
+            return float(amtnode.text)
+        else:
+            return 0
 
     def _parse_addtlinf(self, addtlinf):
         string = '<root>' + html.unescape(addtlinf.text) + '</root>'
-        return ET.fromstring(string).find('narr').text
+        for infonode_label in ['narr', 'inf']:
+            if ET.fromstring(string).find(infonode_label) is not None:
+                return ET.fromstring(string).find(infonode_label).text
+        return None
 
 
 def _toxpath(spath):
