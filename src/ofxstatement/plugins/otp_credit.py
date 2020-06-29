@@ -1,7 +1,7 @@
 import csv
 
 from ofxstatement.plugin import Plugin
-from ofxstatement.statement import Statement, StatementLine, BankAccount
+from ofxstatement.statement import Statement, StatementLine, BankAccount, generate_transaction_id
 from ofxstatement.parser import CsvStatementParser
 
 
@@ -43,6 +43,11 @@ class OtpCreditParser(CsvStatementParser):
 
     def _get_reader(self, fin):
         return csv.reader(fin, delimiter=';')
+
+    def parse_record(self, line):
+        stmt_line = super().parse_record(line)
+        stmt_line.id = generate_transaction_id(stmt_line)
+        return stmt_line
 
     def parse_value(self, value, field):
         if field == "trntype":
