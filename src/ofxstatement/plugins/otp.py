@@ -132,7 +132,7 @@ class OtpParser(object):
             return 0
 
     def _parse_addtlinf(self, addtlinf):
-        string = '<root>' + html.unescape(addtlinf.text) + '</root>'
+        string = '<root>' + html.unescape(addtlinf.text).replace("&", "&amp;") + '</root>'
         for infonode_label in ['narr', 'inf']:
             if ET.fromstring(string).find(infonode_label) is not None:
                 return ET.fromstring(string).find(infonode_label).text
