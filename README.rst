@@ -16,3 +16,9 @@ The XML part of  plugin is pretty much a copy-paste of https://github.com/kedder
 at commit 6cd6d0317a801d466efb30322ab4d71a10771454 with modifications to accomodate 
 the idiosyncracies of OTP exported XMLs. The CSV side is some basic wrapping over
 the built-in CSVStatementParser.
+
+Editing the plugin
+===================
+
+You can follow the instructions at https://github.com/kedder/ofxstatement-sample
+if you want to make changes to this plugin. Pull requests are welcome!
