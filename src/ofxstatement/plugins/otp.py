@@ -129,7 +129,7 @@ class OtpParser(object):
         if amtnode.text is not None:
             return float(amtnode.text)
         else:
-            return 0
+            return None
 
     def _parse_addtlinf(self, addtlinf):
         string = '<root>' + html.unescape(addtlinf.text).replace("&", "&amp;") + '</root>'
