@@ -5,15 +5,15 @@ from ofxstatement.statement import Statement, StatementLine, BankAccount, genera
 from ofxstatement.parser import CsvStatementParser
 
 
-class OtpCreditPlugin(Plugin):
-    """OTP Credit Card Statements (CSV)
+class OtpCreditLegacyPlugin(Plugin):
+    """OTP Credit Card Statements, old netbank, before September 2021 (CSV)
     """
 
     def get_parser(self, filename):
-        return OtpCreditParser(filename)
+        return OtpCreditLegacyParser(filename)
 
 
-class OtpCreditParser(CsvStatementParser):
+class OtpCreditLegacyParser(CsvStatementParser):
 
     date_format = "%Y%m%d"
     encoding = 'utf-8'

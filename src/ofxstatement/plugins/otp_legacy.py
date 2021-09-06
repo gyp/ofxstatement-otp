@@ -10,15 +10,15 @@ from ofxstatement.statement import Statement, StatementLine
 CD_CREDIT = 'CRDT'
 CD_DEBIT = 'DBIT'
 
-class OtpPlugin(Plugin):
-    """OTP (XML)
+class OtpLegacyPlugin(Plugin):
+    """OTP, old netbank, before September 2021 (XML)
     """
 
     def get_parser(self, filename):
-        return OtpParser(filename)
+        return OtpLegacyParser(filename)
 
 
-class OtpParser(object):
+class OtpLegacyParser(object):
     def __init__(self, filename):
         self.filename = filename
 
