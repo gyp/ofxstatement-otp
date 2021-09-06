@@ -37,7 +37,7 @@ setup(name='ofxstatement-otp',
               'otp_legacy_credit = ofxstatement.plugins.otp_credit_legacy:OtpCreditLegacyPlugin'
           ]
           },
-      install_requires=['ofxstatement'],
+      install_requires=['ofxstatement', 'openpyxl', 'dataclasses'],
       include_package_data=True,
       zip_safe=True
       )
