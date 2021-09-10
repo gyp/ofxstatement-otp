@@ -33,6 +33,7 @@ setup(name='ofxstatement-otp',
       entry_points={
           'ofxstatement':
           [
+              'otp = ofxstatement.plugins.otp:OtpPlugin',
               'otp_legacy = ofxstatement.plugins.otp_legacy:OtpLegacyPlugin',
               'otp_legacy_credit = ofxstatement.plugins.otp_credit_legacy:OtpCreditLegacyPlugin'
           ]

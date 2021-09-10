@@ -16,17 +16,23 @@ TRANSACTIONS_SHEET_NAME = 'Tranzakciók'
 
 @dataclass
 class Transaction:
-    booking_date: datetime
     transaction_date: datetime
+    booking_date: datetime
     description: str
-    credit: Decimal
-    debit: Decimal
-    description_details: str
-    notes: str
+    in_or_out: str
+    partner_name: str
+    partner_account: str
+    otp_generated_category: str
+    memo: str
+    account_name: str
+    account_no: str
+    amount: Decimal
+    currency: str
 
 
 class OtpPlugin(Plugin):
-
+    """OTP Bank, after the 2021 September update (XLSX)
+    """
     def get_parser(self, filename):
         parser = OtpXlsxParser(filename)
         parser.statement.bank_id = self.settings.get('BIC', 'IntesaSP')
@@ -53,14 +59,16 @@ class OtpXlsxParser(StatementParser):
         return super(OtpXlsxParser, self).parse()
 
     def parse_record(self, record: Transaction):
+        logging.debug(record)
         stat_line = StatementLine(None,
                                   record.booking_date,
-                                  record.transaction_date,
-                                  Decimal(record.credit) if record.credit else
-                                  Decimal(record.debit))
+                                  record.memo,
+                                  Decimal(record.amount) if record.in_or_out == 'Bejövő' else Decimal(-1 * record.amount))
+        logging.debug(stat_line)
         stat_line.id = generate_transaction_id(stat_line)
-        stat_line.date_user = record.data_valuta
-        stat_line.trntype = OtpXlsxParser._get_transaction_type(record)
+        stat_line.date_user = record.transaction_date
+        stat_line.payee = record.partner_name
+        stat_line.trntype = self._get_transaction_type(record)
         logging.debug(stat_line)
         return stat_line
 
@@ -77,7 +85,7 @@ class OtpXlsxParser(StatementParser):
         wb = load_workbook(self.filename)
         starting_column = 'A'
         ending_column = 'L'
-        starting_row = 1
+        starting_row = 2
         offset = 0
 
         while True:
@@ -90,51 +98,56 @@ class OtpXlsxParser(StatementParser):
 
             values = [*map(lambda x: x.value, data[0])]
             logging.debug(values)
-            if not values[0]:
+            if not values[0] or not values[1]:
                 break
             else:
+                values[0] = datetime.strptime(values[0], '%Y-%m-%d %H:%M:%S')
+                values[1] = datetime.strptime(values[1], '%Y-%m-%d')
                 yield Transaction(*values)
                 offset += 1
 
     def _get_transaction_type(self, transaction: Transaction) -> str:
-        # FIXME: update this to the Hungarian transaction types
-        trans_map = {'Pagamento pos': 'POS',
-                     'Pagamento effettuato su pos estero': 'POS',
-                     'Accredito beu con contabile': 'XFER',
-                     'Canone mensile base e servizi aggiuntivi': 'SRVCHG',
-                     'Prelievo carta debito su banche del gruppo': 'CASH',
-                     'Prelievo carta debito su banche italia/sepa': 'CASH',
-                     'Comm.prelievo carta debito italia/sepa': 'SRVCHG',
-                     'Commiss. su beu internet banking': 'SRVCHG',
-                     'Pagamento telefono': 'PAYMENT',
-                     'Pagamento mav via internet banking': 'PAYMENT',
-                     'Pagamento bolletta cbill': 'PAYMENT',
-                     'Beu tramite internet banking': 'PAYMENT',
-                     'Commissione bolletta cbill': 'SRVCHG',
-                     'Storno pagamento pos': 'POS',
-                     'Storno pagamento pos estero': 'POS',
-                     'Versamento contanti su sportello automatico': 'ATM',
-                     'Canone annuo o-key sms': 'SRVCHG'
+        trans_map = {
+                     'NAPKÖZBENI ÁTUTALÁS': 'XFER',
+                     'VÁSÁRLÁS KÁRTYÁVAL': 'POS',
+                     'ESETI MEGBÍZÁSOK KÖLTSÉGE': 'SRVCHG',
+                     'AZONNALI ÁTUTALÁS': 'XFER',
+                     'ÁRUVISSZAVÉT ELLENÉRTÉKE': 'POS',
+                     'ÉRTÉKPAPÍR ÁLLANDÓ VÉTELI MB': 'XFER',
+                     'ZÁRLATI DÍJ': 'SRVCHG',
+                     'LAKÁSTAKARÉK BETÉT TERHELÉSE': 'XFER',
+                     'HITELTÖRLESZTÉS EGYÉB': 'XFER',
+                     'HITELTÖRLESZTÉS BESZEDÉSE': 'SRVCHG',
+                     'Minimum fizetendő összeg besz.díja': 'SRVCHG',
+                     'ÁTUTALÁS (OTP-N BELÜL)': 'XFER',
+                     'AZONNALI ÁTUTALÁS BANKON BELÜL': 'XFER',
+                     'KONVERZIÓ ÜGYF.HUFSZLÁRÓL DEVSZLÁRA': 'XFER',
+                     'TERHELÉS': 'PAYMENT',
+                     'HITELTÖRLESZTÉS BEFIZETÉS / ÁTUTALÁ': 'PAYMENT',
+                     'PÉNZÁTVEZ. ÉRTÉKPAPÍR SZLA-RÓL': 'XFER',
+                     'IDŐSZAKOS KÖLTSÉGEK': 'SRVCHG',
+                     'KAMATJÓVÁÍRÁS': 'XFER',
+                     'PRIVÁT BANKI CSOMAGDÍJ': 'SRVCHG',
+                     '20TBE0561242 BÉT vétel  HB': 'PAYMENT',
+                     'EGYÉB BIZTOSÍTÁSI DÍJ': 'PAYMENT'
                      }
-        return trans_map[transaction.description]
+        try:
+            return trans_map[transaction.description.strip()]
+        except KeyError:
+            return 'PAYMENT'
 
     def _get_start_balance(self):
-        # FIXME: this export does not have balance information 
-        wb = load_workbook(self.filename)
-        return Decimal(wb[TRANSACTIONS_SHEET_NAME]['E11'].value)
+        return None
 
     def _get_end_balance(self):
-        # FIXME: this export does not have balance information
-        wb = load_workbook(self.filename)
-        return Decimal(wb[TRANSACTIONS_SHEET_NAME]['E12'].value)
+        return None
 
     def _get_start_date(self):
         wb = load_workbook(self.filename)
         date = wb[TRANSACTIONS_SHEET_NAME]['B2'].value
-        return datetime.strptime(date, '%d-%m-%Y')
+        return datetime.strptime(date, '%Y-%m-%d')
 
     def _get_end_date(self):
-        # FIXME: there's no explicit field for this, we need to find the last row for this
-        wb = load_workbook(self.filename)
-        date = wb[TRANSACTIONS_SHEET_NAME]['D12'].value
-        return datetime.strptime(date, '%d.%m.%Y')
+        return None
+        #return datetime.strptime('2050-01-01', '%Y-%m-%d')
+
