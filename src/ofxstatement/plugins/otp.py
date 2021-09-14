@@ -98,13 +98,28 @@ class OtpXlsxParser(StatementParser):
 
             values = [*map(lambda x: x.value, data[0])]
             logging.debug(values)
-            if not values[0] or not values[1]:
-                break
-            else:
-                values[0] = datetime.strptime(values[0], '%Y-%m-%d %H:%M:%S')
-                values[1] = datetime.strptime(values[1], '%Y-%m-%d')
-                yield Transaction(*values)
+
+            # skip hidden rows -- some filters are applied as such
+            if wb.active.row_dimensions[starting_row + offset].hidden:
+                logging.debug("Skipping hidden row: " + str(starting_row + offset))
                 offset += 1
+                continue
+
+            # stop when we reach the end of the file
+            if not values[0]:
+                break
+
+            # skip lines without parseable dates
+            if not values[1]:
+                logging.debug("Skipping incomplete row: " + str(starting_row + offset))
+                offset += 1
+                continue
+
+            values[0] = datetime.strptime(values[0], '%Y-%m-%d %H:%M:%S')
+            values[1] = datetime.strptime(values[1], '%Y-%m-%d')
+            offset += 1
+            yield Transaction(*values)
+
 
     def _get_transaction_type(self, transaction: Transaction) -> str:
         trans_map = {
