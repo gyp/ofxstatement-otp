@@ -63,7 +63,7 @@ class OtpXlsxParser(StatementParser):
         stat_line = StatementLine(None,
                                   record.booking_date,
                                   record.memo,
-                                  Decimal(record.amount) if record.in_or_out == 'Bejövő' else Decimal(-1 * record.amount))
+                                  Decimal(record.amount))
         logging.debug(stat_line)
         stat_line.id = generate_transaction_id(stat_line)
         stat_line.date_user = record.transaction_date
