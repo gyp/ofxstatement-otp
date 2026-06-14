@@ -29,16 +29,15 @@ setup(name='ofxstatement-otp',
           'License :: OSI Approved :: GNU Affero General Public License v3'],
       packages=find_packages('src'),
       package_dir={'': 'src'},
-      namespace_packages=["ofxstatement", "ofxstatement.plugins"],
       entry_points={
           'ofxstatement':
           [
-              'otp = ofxstatement.plugins.otp:OtpPlugin',
-              'otp_legacy = ofxstatement.plugins.otp_legacy:OtpLegacyPlugin',
-              'otp_legacy_credit = ofxstatement.plugins.otp_credit_legacy:OtpCreditLegacyPlugin'
+              'otp = ofxstatement_otp.otp:OtpPlugin',
+              'otp_legacy = ofxstatement_otp.otp_legacy:OtpLegacyPlugin',
+              'otp_legacy_credit = ofxstatement_otp.otp_credit_legacy:OtpCreditLegacyPlugin'
           ]
           },
-      install_requires=['ofxstatement', 'openpyxl', 'dataclasses'],
+      install_requires=['ofxstatement', 'openpyxl'],
       include_package_data=True,
       zip_safe=True
       )

@@ -1,5 +1,9 @@
 *.pyc
+__pycache__
+.DS_Store
 *.swp
+*.ofx
+manual_test/sample.xlsx
 develop-eggs
 dist
 src/*.egg-info
