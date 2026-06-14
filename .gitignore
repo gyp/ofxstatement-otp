@@ -4,6 +4,8 @@ __pycache__
 *.swp
 *.ofx
 manual_test/sample.xlsx
+# Real (non-anonymized) exports must never be committed.
+manual_test/*DO-NOT*COMMIT*
 develop-eggs
 dist
 src/*.egg-info

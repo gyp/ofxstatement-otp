@@ -33,8 +33,7 @@ setup(name='ofxstatement-otp',
           'ofxstatement':
           [
               'otp = ofxstatement_otp.otp:OtpPlugin',
-              'otp_legacy = ofxstatement_otp.otp_legacy:OtpLegacyPlugin',
-              'otp_legacy_credit = ofxstatement_otp.otp_credit_legacy:OtpCreditLegacyPlugin'
+              'otp_legacy = ofxstatement_otp.otp_legacy:OtpLegacyPlugin'
           ]
           },
       install_requires=['ofxstatement', 'openpyxl'],

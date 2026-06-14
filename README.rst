@@ -9,24 +9,53 @@ Current plugin
 
 It's a fork and adaptation of https://github.com/Jacotsu/ofxstatement-intesasp
 
+The ``otp`` plugin reads the post-2026-June netbank XLSX export::
+
+    ofxstatement convert -t otp statement.xlsx out.ofx
+
+Selecting a single account
+--------------------------
+
+A single OTP export bundles **every** account into one file (identified only by
+account number). Without further configuration the plugin emits one statement
+containing all of them. To get a clean per-account OFX, set the ``account``
+option to the account number (a case-insensitive substring is enough); rows for
+other accounts are skipped.
+
+Define named plugin types in your ofxstatement config
+(``ofxstatement edit-config``)::
+
+    [otp:checking]
+    plugin = otp
+    account = 11773535
+
+    [otp:credit]
+    plugin = otp
+    account = 11773016
+
+then convert each account from the same export::
+
+    ofxstatement convert -t otp:checking statement.xlsx checking.ofx
+    ofxstatement convert -t otp:credit  statement.xlsx credit.ofx
+
+
 Legacy plugins
 ==============
 
-The plugins with "legacy" in their names parse the files exported by the previous
-version of OTP's netbank. That version is no longer available since September 2021.
+The ``otp_legacy`` plugin parses the **pre-2026-June** OTP netbank XLSX export
+-- the format the ``otp`` plugin itself used to read before OTP changed the
+export in June 2026::
 
-The exported XMLs are pretty much conformant to CAMT.053 (ISO-20022),
-with some extra information thrown in here and there, or some missing data
-in some other places. The 'otp' plugin handles these types of exports.
+    ofxstatement convert -t otp_legacy old-statement.xlsx out.ofx
 
-For some weird reason credit card statements differed from debit
-card statements and can only be exported in CSV format. The 'otp_credit'
-plugin handles such exports.
+In that older format the transaction table started on row 2 (columns A-L), the
+account id was taken from cell ``D8`` and the statement start date from cell
+``B2``. New exports look different (a metadata preamble, a relocated header and
+a new column order), so use the ``otp`` plugin for anything exported from June
+2026 onwards.
 
-The XML part is pretty much a copy-paste of https://github.com/kedder/ofxstatement-iso20022
-at commit 6cd6d0317a801d466efb30322ab4d71a10771454 with modifications to accomodate 
-the idiosyncracies of OTP exported XMLs. The CSV side is some basic wrapping over
-the built-in CSVStatementParser.
+(Even older XML/CSV exports from the netbank version retired in September 2021
+are no longer supported.)
 
 Editing the plugin
 ===================
@@ -37,8 +66,8 @@ if you want to make changes to this plugin. Pull requests are welcome!
 The plugin code lives in its own top-level package, ``ofxstatement_otp``, and is
 wired into ``ofxstatement`` purely through the entry points declared in
 ``setup.py`` (this matches the layout of the upstream sample). The plugin
-*names* used on the command line are ``otp``, ``otp_legacy`` and
-``otp_legacy_credit``.
+*names* used on the command line are ``otp`` (current export) and
+``otp_legacy`` (pre-2026-June export).
 
 Development setup
 =================

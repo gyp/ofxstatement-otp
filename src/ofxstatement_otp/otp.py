@@ -3,49 +3,94 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 import logging
+import warnings
+from typing import Optional
 
 from ofxstatement.plugin import Plugin
 from ofxstatement.parser import StatementParser
-from ofxstatement.statement import (Statement, StatementLine,
-                                    generate_transaction_id)
+from ofxstatement.statement import Statement, StatementLine
 
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger('OTP')
+logger = logging.getLogger("OTP")
 
-TRANSACTIONS_SHEET_NAME = 'Tranzakciók'
+TRANSACTIONS_SHEET_NAME = "Tranzakciók"
+
+# Labels that mark the metadata cells in the preamble (column A, value in
+# column B). The post-2025 OTP netbank export prefixes the transaction table
+# with a few rows of statement metadata.
+LABEL_START_DATE = "Lekérdezés kezdete"
+LABEL_END_DATE = "Lekérdezés vége"
+
+# Column A header that marks the start of the transaction table. The same word
+# also appears as a metadata label in the preamble, so the header row is
+# identified by also requiring the column B header (see _find_header_row).
+HEADER_ACCOUNT_NO = "Számlaszám"
+HEADER_PARTNER_ACCOUNT = "Ellenoldali számlaszám"
+
+DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S"
+DATE_FORMAT = "%Y-%m-%d"
+
 
 @dataclass
 class Transaction:
+    account_no: str
+    partner_account: str
+    partner_name: str
+    description: str
+    memo: str
+    category: str
+    bank_txn_id: str
     transaction_date: datetime
     booking_date: datetime
-    description: str
-    in_or_out: str
-    partner_name: str
-    partner_account: str
-    otp_generated_category: str
-    memo: str
-    account_name: str
-    account_no: str
     amount: Decimal
     currency: str
 
 
 class OtpPlugin(Plugin):
-    """OTP Bank, after the 2021 September update (XLSX)
+    """OTP Bank, post-2026-June netbank export (XLSX).
+
+    The export bundles every account into a single file; set the ``account``
+    setting to the (partial) account number to emit a statement for just one
+    account.
     """
+
     def get_parser(self, filename):
-        parser = OtpXlsxParser(filename)
-        parser.statement.bank_id = self.settings.get('BIC', 'IntesaSP')
+        parser = OtpXlsxParser(filename, self.settings)
+        parser.statement.bank_id = self.settings.get("BIC", "IntesaSP")
         return parser
+
+
+def _to_datetime(value, fmt: str) -> datetime:
+    """Accept either a native datetime cell or a string in ``fmt``."""
+    if isinstance(value, datetime):
+        return value
+    return datetime.strptime(value, fmt)
+
+
+def _load_workbook(filename):
+    """Load an xlsx, silencing openpyxl's harmless "no default style" warning.
+
+    OTP exports ship a stylesheet without a named default style, which makes
+    openpyxl warn on every load. The warning is noise for our read-only use.
+    """
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message="Workbook contains no default style",
+            category=UserWarning,
+        )
+        return load_workbook(filename)
 
 
 class OtpXlsxParser(StatementParser):
 
-    def split_records(self):
-        return self._get_transactions()
-
-    def __init__(self, filename):
+    def __init__(self, filename, settings=None):
         self.filename = filename
+        self.settings = settings or {}
+        self.account_filter = self.settings.get("account")
+        self.workbook = _load_workbook(self.filename)
+        self.sheet = self.workbook[TRANSACTIONS_SHEET_NAME]
+        self.header_row = self._find_header_row()
+
         self.statement = Statement()
         self.statement.account_id = self._get_account_id()
         self.statement.currency = self._get_currency()
@@ -53,103 +98,117 @@ class OtpXlsxParser(StatementParser):
         self.statement.start_date = self._get_start_date()
         self.statement.end_balance = self._get_end_balance()
         self.statement.end_date = self._get_end_date()
-        logging.debug(self.statement)
+        logger.debug(self.statement)
 
     def parse(self):
         return super(OtpXlsxParser, self).parse()
 
+    def split_records(self):
+        return self._get_transactions()
+
     def parse_record(self, record: Transaction):
-        logging.debug(record)
-        stat_line = StatementLine(None,
-                                  record.booking_date,
-                                  record.memo,
-                                  Decimal(record.amount))
-        logging.debug(stat_line)
-        stat_line.id = generate_transaction_id(stat_line)
+        logger.debug(record)
+        stat_line = StatementLine(
+            record.bank_txn_id,
+            record.booking_date,
+            record.memo,
+            Decimal(str(record.amount)),
+        )
         stat_line.date_user = record.transaction_date
         stat_line.payee = record.partner_name
         stat_line.trntype = self._get_transaction_type(record)
-        logging.debug(stat_line)
+        logger.debug(stat_line)
         return stat_line
 
-    def _get_account_id(self):
-        # FIXME: there's no single field for this in this format
-        wb = load_workbook(self.filename)
-        return wb[TRANSACTIONS_SHEET_NAME]['D8'].value
+    def _find_header_row(self) -> int:
+        """Locate the transaction table header row.
 
-    def _get_currency(self):
-        # TODO: support non-HUF accounts
-        return 'HUF'
+        ``Számlaszám`` appears both as a metadata label and as the table's
+        first column header, so the header is disambiguated by also requiring
+        the partner-account header in column B.
+        """
+        for row in range(1, self.sheet.max_row + 1):
+            a = self.sheet.cell(row=row, column=1).value
+            b = self.sheet.cell(row=row, column=2).value
+            if a == HEADER_ACCOUNT_NO and b == HEADER_PARTNER_ACCOUNT:
+                return row
+        raise ValueError(
+            "Could not find the transaction table header (expected a row with "
+            f"'{HEADER_ACCOUNT_NO}' / '{HEADER_PARTNER_ACCOUNT}') in sheet "
+            f"'{TRANSACTIONS_SHEET_NAME}'"
+        )
 
-    def _get_transactions(self) -> list[Transaction]:
-        wb = load_workbook(self.filename)
-        starting_column = 'A'
-        ending_column = 'L'
-        starting_row = 2
-        offset = 0
+    def _included(self, account_no) -> bool:
+        if not self.account_filter:
+            return True
+        return self.account_filter.lower() in str(account_no).lower()
 
-        while True:
-            data = wb[TRANSACTIONS_SHEET_NAME][
-                        '{}{}:{}{}'.format(starting_column,
-                                           starting_row + offset,
-                                           ending_column,
-                                           starting_row + offset
-                                           )]
-
-            values = [*map(lambda x: x.value, data[0])]
-            logging.debug(values)
-
-            # skip hidden rows -- some filters are applied as such
-            if wb.active.row_dimensions[starting_row + offset].hidden:
-                logging.debug("Skipping hidden row: " + str(starting_row + offset))
-                offset += 1
+    def _get_transactions(self):
+        for row in range(self.header_row + 1, self.sheet.max_row + 1):
+            # skip hidden rows -- some netbank filters are applied as such
+            if self.sheet.row_dimensions[row].hidden:
+                logger.debug("Skipping hidden row: %s", row)
                 continue
 
-            # stop when we reach the end of the file
+            values = [
+                self.sheet.cell(row=row, column=col).value for col in range(1, 12)
+            ]
+
+            # stop at the first row without an account number
             if not values[0]:
                 break
 
-            # skip lines without parseable dates
-            if not values[1]:
-                logging.debug("Skipping incomplete row: " + str(starting_row + offset))
-                offset += 1
+            # skip rows without a booking date (e.g. pending items)
+            if not values[8]:
+                logger.debug("Skipping incomplete row: %s", row)
                 continue
 
-            values[0] = datetime.strptime(values[0], '%Y-%m-%d %H:%M:%S')
-            values[1] = datetime.strptime(values[1], '%Y-%m-%d')
-            offset += 1
+            # only emit the configured account, if filtering is enabled
+            if not self._included(values[0]):
+                continue
+
+            values[7] = _to_datetime(values[7], DATETIME_FORMAT)
+            values[8] = _to_datetime(values[8], DATE_FORMAT)
             yield Transaction(*values)
 
+    def _get_account_id(self) -> Optional[str]:
+        # When filtering, report the filtered account; otherwise fall back to
+        # the first account number that appears in the data.
+        for row in range(self.header_row + 1, self.sheet.max_row + 1):
+            account_no = self.sheet.cell(row=row, column=1).value
+            if not account_no:
+                break
+            if self._included(account_no):
+                return str(account_no)
+        return self.account_filter
 
-    def _get_transaction_type(self, transaction: Transaction) -> str:
-        trans_map = {
-                     'NAPKÖZBENI ÁTUTALÁS': 'XFER',
-                     'VÁSÁRLÁS KÁRTYÁVAL': 'POS',
-                     'ESETI MEGBÍZÁSOK KÖLTSÉGE': 'SRVCHG',
-                     'AZONNALI ÁTUTALÁS': 'XFER',
-                     'ÁRUVISSZAVÉT ELLENÉRTÉKE': 'POS',
-                     'ÉRTÉKPAPÍR ÁLLANDÓ VÉTELI MB': 'XFER',
-                     'ZÁRLATI DÍJ': 'SRVCHG',
-                     'LAKÁSTAKARÉK BETÉT TERHELÉSE': 'XFER',
-                     'HITELTÖRLESZTÉS EGYÉB': 'XFER',
-                     'HITELTÖRLESZTÉS BESZEDÉSE': 'SRVCHG',
-                     'Minimum fizetendő összeg besz.díja': 'SRVCHG',
-                     'ÁTUTALÁS (OTP-N BELÜL)': 'XFER',
-                     'AZONNALI ÁTUTALÁS BANKON BELÜL': 'XFER',
-                     'KONVERZIÓ ÜGYF.HUFSZLÁRÓL DEVSZLÁRA': 'XFER',
-                     'TERHELÉS': 'PAYMENT',
-                     'HITELTÖRLESZTÉS BEFIZETÉS / ÁTUTALÁ': 'PAYMENT',
-                     'PÉNZÁTVEZ. ÉRTÉKPAPÍR SZLA-RÓL': 'XFER',
-                     'IDŐSZAKOS KÖLTSÉGEK': 'SRVCHG',
-                     'KAMATJÓVÁÍRÁS': 'XFER',
-                     'PRIVÁT BANKI CSOMAGDÍJ': 'SRVCHG',
-                     '20TBE0561242 BÉT vétel  HB': 'PAYMENT',
-                     'EGYÉB BIZTOSÍTÁSI DÍJ': 'PAYMENT'
-                     }
-        try:
-            return trans_map[transaction.description.strip()]
-        except KeyError:
-            return 'PAYMENT'
+    def _get_currency(self) -> str:
+        # Read the currency of the first matching transaction; default to HUF.
+        for row in range(self.header_row + 1, self.sheet.max_row + 1):
+            account_no = self.sheet.cell(row=row, column=1).value
+            if not account_no:
+                break
+            if self._included(account_no):
+                currency = self.sheet.cell(row=row, column=11).value
+                if currency:
+                    return str(currency)
+        return "HUF"
+
+    def _get_preamble_value(self, label: str):
+        """Return the column-B value of a labelled metadata row (rows above
+        the transaction table)."""
+        for row in range(1, self.header_row):
+            if self.sheet.cell(row=row, column=1).value == label:
+                return self.sheet.cell(row=row, column=2).value
+        return None
+
+    def _get_start_date(self) -> Optional[datetime]:
+        value = self._get_preamble_value(LABEL_START_DATE)
+        return _to_datetime(value, DATE_FORMAT) if value else None
+
+    def _get_end_date(self) -> Optional[datetime]:
+        value = self._get_preamble_value(LABEL_END_DATE)
+        return _to_datetime(value, DATE_FORMAT) if value else None
 
     def _get_start_balance(self):
         return None
@@ -157,12 +216,32 @@ class OtpXlsxParser(StatementParser):
     def _get_end_balance(self):
         return None
 
-    def _get_start_date(self):
-        wb = load_workbook(self.filename)
-        date = wb[TRANSACTIONS_SHEET_NAME]['B2'].value
-        return datetime.strptime(date, '%Y-%m-%d')
-
-    def _get_end_date(self):
-        return None
-        #return datetime.strptime('2050-01-01', '%Y-%m-%d')
-
+    def _get_transaction_type(self, transaction: Transaction) -> str:
+        trans_map = {
+            "NAPKÖZBENI ÁTUTALÁS": "XFER",
+            "VÁSÁRLÁS KÁRTYÁVAL": "POS",
+            "ESETI MEGBÍZÁSOK KÖLTSÉGE": "SRVCHG",
+            "AZONNALI ÁTUTALÁS": "XFER",
+            "ÁRUVISSZAVÉT ELLENÉRTÉKE": "POS",
+            "ÉRTÉKPAPÍR ÁLLANDÓ VÉTELI MB": "XFER",
+            "ZÁRLATI DÍJ": "SRVCHG",
+            "LAKÁSTAKARÉK BETÉT TERHELÉSE": "XFER",
+            "HITELTÖRLESZTÉS EGYÉB": "XFER",
+            "HITELTÖRLESZTÉS BESZEDÉSE": "SRVCHG",
+            "Minimum fizetendő összeg besz.díja": "SRVCHG",
+            "ÁTUTALÁS (OTP-N BELÜL)": "XFER",
+            "AZONNALI ÁTUTALÁS BANKON BELÜL": "XFER",
+            "KONVERZIÓ ÜGYF.HUFSZLÁRÓL DEVSZLÁRA": "XFER",
+            "TERHELÉS": "PAYMENT",
+            "HITELTÖRLESZTÉS BEFIZETÉS / ÁTUTALÁ": "PAYMENT",
+            "PÉNZÁTVEZ. ÉRTÉKPAPÍR SZLA-RÓL": "XFER",
+            "IDŐSZAKOS KÖLTSÉGEK": "SRVCHG",
+            "KAMATJÓVÁÍRÁS": "XFER",
+            "PRIVÁT BANKI CSOMAGDÍJ": "SRVCHG",
+            "20TBE0561242 BÉT vétel  HB": "PAYMENT",
+            "EGYÉB BIZTOSÍTÁSI DÍJ": "PAYMENT",
+        }
+        try:
+            return trans_map[transaction.description.strip()]
+        except KeyError:
+            return "PAYMENT"
