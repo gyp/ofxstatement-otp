@@ -86,8 +86,9 @@ immediately -- no reinstall needed. Confirm the plugins are registered with::
 Manual testing
 ==============
 
-There is no automated test suite yet. The ``manual_test/`` directory contains a
-small helper so you can exercise the ``otp`` plugin without a real bank export.
+The automated test suite runs with ``make test`` (pytest). For exercising the
+``otp`` plugin against a realistic file without a real bank export, the
+``manual_test/`` directory contains a small helper.
 
 1. Generate a synthetic OTP-format XLSX (fake data, correct structure)::
 
