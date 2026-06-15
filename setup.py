@@ -37,7 +37,7 @@ setup(
             "otp_legacy = ofxstatement_otp.otp_legacy:OtpLegacyPlugin",
         ]
     },
-    install_requires=["ofxstatement", "openpyxl"],
+    install_requires=["ofxstatement>=0.9.0", "openpyxl>=3.0"],
     include_package_data=True,
     zip_safe=True,
 )
