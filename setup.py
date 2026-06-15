@@ -16,6 +16,7 @@ setup(
     url="https://github.com/gyp/ofxstatement-otp",
     description=("ofxstatement plugin for the Hungarian bank OTP"),
     long_description=long_description,
+    long_description_content_type="text/x-rst",
     license="AGPLv3",
     keywords=["ofx", "banking", "statement"],
     classifiers=[
