@@ -16,6 +16,8 @@ from ofxstatement.plugin import Plugin
 from ofxstatement.parser import StatementParser
 from ofxstatement.statement import Statement, StatementLine, generate_transaction_id
 
+from ofxstatement_otp.transaction_types import transaction_type
+
 logger = logging.getLogger("OTP")
 
 TRANSACTIONS_SHEET_NAME = "Tranzakciók"
@@ -129,34 +131,7 @@ class OtpLegacyXlsxParser(StatementParser):
             yield Transaction(*values)
 
     def _get_transaction_type(self, transaction: Transaction) -> str:
-        trans_map = {
-            "NAPKÖZBENI ÁTUTALÁS": "XFER",
-            "VÁSÁRLÁS KÁRTYÁVAL": "POS",
-            "ESETI MEGBÍZÁSOK KÖLTSÉGE": "SRVCHG",
-            "AZONNALI ÁTUTALÁS": "XFER",
-            "ÁRUVISSZAVÉT ELLENÉRTÉKE": "POS",
-            "ÉRTÉKPAPÍR ÁLLANDÓ VÉTELI MB": "XFER",
-            "ZÁRLATI DÍJ": "SRVCHG",
-            "LAKÁSTAKARÉK BETÉT TERHELÉSE": "XFER",
-            "HITELTÖRLESZTÉS EGYÉB": "XFER",
-            "HITELTÖRLESZTÉS BESZEDÉSE": "SRVCHG",
-            "Minimum fizetendő összeg besz.díja": "SRVCHG",
-            "ÁTUTALÁS (OTP-N BELÜL)": "XFER",
-            "AZONNALI ÁTUTALÁS BANKON BELÜL": "XFER",
-            "KONVERZIÓ ÜGYF.HUFSZLÁRÓL DEVSZLÁRA": "XFER",
-            "TERHELÉS": "PAYMENT",
-            "HITELTÖRLESZTÉS BEFIZETÉS / ÁTUTALÁ": "PAYMENT",
-            "PÉNZÁTVEZ. ÉRTÉKPAPÍR SZLA-RÓL": "XFER",
-            "IDŐSZAKOS KÖLTSÉGEK": "SRVCHG",
-            "KAMATJÓVÁÍRÁS": "XFER",
-            "PRIVÁT BANKI CSOMAGDÍJ": "SRVCHG",
-            "20TBE0561242 BÉT vétel  HB": "PAYMENT",
-            "EGYÉB BIZTOSÍTÁSI DÍJ": "PAYMENT",
-        }
-        try:
-            return trans_map[transaction.description.strip()]
-        except KeyError:
-            return "PAYMENT"
+        return transaction_type(transaction.description)
 
     def _get_start_balance(self):
         return None
