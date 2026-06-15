@@ -104,8 +104,22 @@ class OtpLegacyXlsxParser(StatementParser):
                 )
             ]
 
-            values = [*map(lambda x: x.value, data[0])]
-            logger.debug(values)
+            cells = [*map(lambda x: x.value, data[0])]
+            logger.debug(cells)
+            (
+                transaction_date,
+                booking_date,
+                description,
+                in_or_out,
+                partner_name,
+                partner_account,
+                otp_generated_category,
+                memo,
+                account_name,
+                account_no,
+                amount,
+                currency,
+            ) = cells
 
             # skip hidden rows -- some filters are applied as such
             if wb.active.row_dimensions[starting_row + offset].hidden:
@@ -114,19 +128,32 @@ class OtpLegacyXlsxParser(StatementParser):
                 continue
 
             # stop when we reach the end of the file
-            if not values[0]:
+            if not transaction_date:
                 break
 
             # skip lines without parseable dates
-            if not values[1]:
+            if not booking_date:
                 logger.debug("Skipping incomplete row: " + str(starting_row + offset))
                 offset += 1
                 continue
 
-            values[0] = datetime.strptime(values[0], "%Y-%m-%d %H:%M:%S")
-            values[1] = datetime.strptime(values[1], "%Y-%m-%d")
             offset += 1
-            yield Transaction(*values)
+            yield Transaction(
+                transaction_date=datetime.strptime(
+                    transaction_date, "%Y-%m-%d %H:%M:%S"
+                ),
+                booking_date=datetime.strptime(booking_date, "%Y-%m-%d"),
+                description=description,
+                in_or_out=in_or_out,
+                partner_name=partner_name,
+                partner_account=partner_account,
+                otp_generated_category=otp_generated_category,
+                memo=memo,
+                account_name=account_name,
+                account_no=account_no,
+                amount=amount,
+                currency=currency,
+            )
 
     def _get_transaction_type(self, transaction: Transaction) -> str:
         trans_map = {
