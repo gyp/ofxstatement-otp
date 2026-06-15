@@ -18,5 +18,5 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e .[dev]
       - run: black --check setup.py src tests
-      - run: pytest
+      - run: pytest --cov src/ofxstatement_otp
       - run: mypy src tests
