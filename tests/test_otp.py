@@ -101,6 +101,14 @@ def test_account_filter_is_substring_and_case_insensitive(sample_xlsx):
     assert all(line.payee in {"MEDIA MARKT", "OTP Bank"} for line in result.lines)
 
 
+def test_account_id_unset_when_filter_matches_nothing(sample_xlsx):
+    # A filter that matches no account must not pass itself off as the
+    # statement's account_id; it should be left unset.
+    statement, result = parse(sample_xlsx, {"account": "99999999"})
+    assert result.lines == []
+    assert statement.account_id is None
+
+
 def test_fitid_comes_from_bank_identifier(sample_xlsx):
     _, result = parse(sample_xlsx, {"account": CHECKING})
     first = result.lines[0]

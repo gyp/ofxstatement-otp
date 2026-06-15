@@ -182,7 +182,13 @@ class OtpXlsxParser(StatementParser):
                 break
             if self._included(account_no):
                 return str(account_no)
-        return self.account_filter
+        if self.account_filter:
+            logger.warning(
+                "No transactions matched account filter %r; "
+                "leaving account_id unset",
+                self.account_filter,
+            )
+        return None
 
     def _get_currency(self) -> str:
         # Read the currency of the first matching transaction; default to HUF.
