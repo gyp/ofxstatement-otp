@@ -152,28 +152,53 @@ class OtpXlsxParser(StatementParser):
                 logger.debug("Skipping hidden row: %s", row)
                 continue
 
-            values = [
-                self.sheet.cell(row=row, column=col).value for col in range(1, 12)
-            ]
+            cells = [self.sheet.cell(row=row, column=col).value for col in range(1, 12)]
+            (
+                account_no,
+                partner_account,
+                partner_name,
+                description,
+                memo,
+                category,
+                bank_txn_id,
+                transaction_date,
+                booking_date,
+                amount,
+                currency,
+            ) = cells
 
             # stop at the first row without an account number
-            if not values[0]:
+            if not account_no:
                 break
 
             # skip rows without a booking date (e.g. pending items)
-            if not values[8]:
+            if not booking_date:
                 logger.debug("Skipping incomplete row: %s", row)
                 continue
 
             # only emit the configured account, if filtering is enabled
-            if not self._included(values[0]):
+            if not self._included(account_no):
                 continue
 
-            # The row is booked (booking date present, checked above); the
-            # transaction datetime may still be blank, so guard it.
-            values[7] = _to_datetime(values[7], DATETIME_FORMAT) if values[7] else None
-            values[8] = _to_datetime(values[8], DATE_FORMAT)
-            yield Transaction(*values)
+            yield Transaction(
+                account_no=account_no,
+                partner_account=partner_account,
+                partner_name=partner_name,
+                description=description,
+                memo=memo,
+                category=category,
+                bank_txn_id=bank_txn_id,
+                # The row is booked (booking date present, checked above); the
+                # transaction datetime may still be blank, so guard it.
+                transaction_date=(
+                    _to_datetime(transaction_date, DATETIME_FORMAT)
+                    if transaction_date
+                    else None
+                ),
+                booking_date=_to_datetime(booking_date, DATE_FORMAT),
+                amount=amount,
+                currency=currency,
+            )
 
     def _get_account_id(self) -> Optional[str]:
         # When filtering, report the filtered account; otherwise fall back to
