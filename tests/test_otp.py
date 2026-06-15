@@ -101,6 +101,14 @@ def test_account_filter_is_substring_and_case_insensitive(sample_xlsx):
     assert all(line.payee in {"MEDIA MARKT", "OTP Bank"} for line in result.lines)
 
 
+def test_account_id_unset_when_filter_matches_nothing(sample_xlsx):
+    # A filter that matches no account must not pass itself off as the
+    # statement's account_id; it should be left unset.
+    statement, result = parse(sample_xlsx, {"account": "99999999"})
+    assert result.lines == []
+    assert statement.account_id is None
+
+
 def test_fitid_comes_from_bank_identifier(sample_xlsx):
     _, result = parse(sample_xlsx, {"account": CHECKING})
     first = result.lines[0]
@@ -126,6 +134,35 @@ def test_trntype_mapping(sample_xlsx):
     assert by_payee["Példa János"].trntype == "XFER"
     # Unknown description falls back to PAYMENT.
     assert by_payee["Valami Bolt"].trntype == "PAYMENT"
+
+
+def test_missing_transaction_datetime_does_not_crash(tmp_path):
+    # A booked row (booking date present) whose transaction datetime is blank
+    # must still be emitted, with date_user unset, rather than crashing.
+    wb = generate_sample.build_workbook()
+    ws = wb[generate_sample.TRANSACTIONS_SHEET_NAME]
+    ws.append(
+        [
+            CHECKING,
+            "",
+            "NO TXN TIME",
+            "VÁSÁRLÁS KÁRTYÁVAL",
+            "memo",
+            "Egyéb",
+            "2024012909999011010",
+            None,
+            "2024-01-29",
+            -100.00,
+            "HUF",
+        ]
+    )
+    path = tmp_path / "sample.xlsx"
+    wb.save(path)
+
+    _, result = parse(str(path), {"account": CHECKING})
+    line = next(line for line in result.lines if line.payee == "NO TXN TIME")
+    assert line.date == datetime(2024, 1, 29)
+    assert line.date_user is None
 
 
 def test_native_datetime_cell_is_parsed(sample_xlsx):

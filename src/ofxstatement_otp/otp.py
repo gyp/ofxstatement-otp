@@ -39,7 +39,7 @@ class Transaction:
     memo: str
     category: str
     bank_txn_id: str
-    transaction_date: datetime
+    transaction_date: Optional[datetime]
     booking_date: datetime
     amount: Decimal
     currency: str
@@ -167,7 +167,9 @@ class OtpXlsxParser(StatementParser):
             if not self._included(values[0]):
                 continue
 
-            values[7] = _to_datetime(values[7], DATETIME_FORMAT)
+            # The row is booked (booking date present, checked above); the
+            # transaction datetime may still be blank, so guard it.
+            values[7] = _to_datetime(values[7], DATETIME_FORMAT) if values[7] else None
             values[8] = _to_datetime(values[8], DATE_FORMAT)
             yield Transaction(*values)
 
@@ -180,7 +182,13 @@ class OtpXlsxParser(StatementParser):
                 break
             if self._included(account_no):
                 return str(account_no)
-        return self.account_filter
+        if self.account_filter:
+            logger.warning(
+                "No transactions matched account filter %r; "
+                "leaving account_id unset",
+                self.account_filter,
+            )
+        return None
 
     def _get_currency(self) -> str:
         # Read the currency of the first matching transaction; default to HUF.
