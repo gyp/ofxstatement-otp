@@ -57,7 +57,7 @@ class OtpPlugin(Plugin):
 
     def get_parser(self, filename):
         parser = OtpXlsxParser(filename, self.settings)
-        parser.statement.bank_id = self.settings.get("BIC", "IntesaSP")
+        parser.statement.bank_id = self.settings.get("BIC", "OTPVHUHB")
         return parser
 
 

@@ -56,3 +56,10 @@ def test_trntype_mapping(statement):
 
 def test_every_line_has_an_id(statement):
     assert all(line.id for line in statement.lines)
+
+
+def test_default_bank_id_is_otp_bic():
+    from ofxstatement_otp.otp_legacy import OtpLegacyPlugin
+
+    parser = OtpLegacyPlugin(None, {}).get_parser(str(OLD_SAMPLE))
+    assert parser.statement.bank_id == "OTPVHUHB"

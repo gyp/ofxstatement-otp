@@ -44,7 +44,7 @@ class OtpLegacyPlugin(Plugin):
 
     def get_parser(self, filename):
         parser = OtpLegacyXlsxParser(filename)
-        parser.statement.bank_id = self.settings.get("BIC", "IntesaSP")
+        parser.statement.bank_id = self.settings.get("BIC", "OTPVHUHB")
         return parser
 
 

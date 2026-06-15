@@ -165,6 +165,20 @@ def test_missing_transaction_datetime_does_not_crash(tmp_path):
     assert line.date_user is None
 
 
+def test_default_bank_id_is_otp_bic(sample_xlsx):
+    from ofxstatement_otp.otp import OtpPlugin
+
+    parser = OtpPlugin(None, {}).get_parser(sample_xlsx)
+    assert parser.statement.bank_id == "OTPVHUHB"
+
+
+def test_bic_setting_overrides_bank_id(sample_xlsx):
+    from ofxstatement_otp.otp import OtpPlugin
+
+    parser = OtpPlugin(None, {"BIC": "MYBANKXX"}).get_parser(sample_xlsx)
+    assert parser.statement.bank_id == "MYBANKXX"
+
+
 def test_native_datetime_cell_is_parsed(sample_xlsx):
     # The MOL row uses a native datetime cell for the transaction date.
     _, result = parse(sample_xlsx, {"account": CHECKING})
