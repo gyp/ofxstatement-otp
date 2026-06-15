@@ -8,11 +8,15 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.x"
-      - run: pip install -e . pytest mypy
-      - run: pytest
+          python-version: ${{ matrix.python-version }}
+      - run: pip install -e .[dev]
+      - run: black --check setup.py src tests
+      - run: pytest --cov src/ofxstatement_otp
       - run: mypy src tests

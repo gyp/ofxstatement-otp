@@ -1,8 +1,7 @@
 #!/usr/bin/python3
 """Setup"""
 
-from setuptools import find_packages
-from distutils.core import setup
+from setuptools import find_packages, setup
 
 version = "0.2.0"
 
@@ -22,6 +21,11 @@ setup(
     classifiers=[
         "Development Status :: 4 - Beta",
         "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
         "Natural Language :: English",
         "Topic :: Office/Business :: Financial :: Accounting",
         "Topic :: Utilities",
@@ -37,7 +41,9 @@ setup(
             "otp_legacy = ofxstatement_otp.otp_legacy:OtpLegacyPlugin",
         ]
     },
-    install_requires=["ofxstatement", "openpyxl"],
+    python_requires=">=3.9",
+    install_requires=["ofxstatement>=0.9.0", "openpyxl>=3.0"],
+    extras_require={"dev": ["pytest", "pytest-cov", "mypy", "black"]},
     include_package_data=True,
     zip_safe=True,
 )
