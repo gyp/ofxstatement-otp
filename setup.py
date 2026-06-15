@@ -38,6 +38,7 @@ setup(
         ]
     },
     install_requires=["ofxstatement>=0.9.0", "openpyxl>=3.0"],
+    extras_require={"dev": ["pytest", "mypy", "black"]},
     include_package_data=True,
     zip_safe=True,
 )
