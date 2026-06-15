@@ -14,5 +14,6 @@ jobs:
         with:
           python-version: "3.x"
       - run: pip install -e .[dev]
+      - run: black --check setup.py src tests
       - run: pytest
       - run: mypy src tests
