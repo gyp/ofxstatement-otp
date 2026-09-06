@@ -55,12 +55,21 @@ The current plugin lives in [src/ofxstatement_otp/otp.py](src/ofxstatement_otp/o
   substring of the account number, case-insensitive) to emit a statement for just one
   account — rows for other accounts are skipped. This replaces the old external
   `csvgrep`-based splitting wrapper.
+- The preamble's `Számlaszám` cell lists **every** account the export covers (including
+  ones with no activity in the period). `_check_account_filter()` validates the `account`
+  setting against that list and **raises** if it matches none — a stale setting (e.g. a
+  replaced credit card) would otherwise silently produce an empty OFX. Matching several
+  accounts only logs a warning. A declared account with no transactions is legitimate and
+  yields an empty statement.
 - `parse_record()` turns each `Transaction` into a `StatementLine`, using `Banki azonosító`
   (col G) as the OFX FITID.
 - Statement metadata is read by **label** from the preamble: `account_id` from the matched
-  account number, `start_date`/`end_date` from `Lekérdezés kezdete`/`Lekérdezés vége`.
+  account number (the full number from the preamble list when filtering, so a substring
+  setting still reports the whole thing), `start_date`/`end_date` from `Lekérdezés kezdete`/`Lekérdezés vége`.
 - `_get_transaction_type()` maps Hungarian transaction descriptions (e.g. `VÁSÁRLÁS KÁRTYÁVAL`)
-  to OFX `trntype` codes via the `trans_map` dict, defaulting to `PAYMENT` for unknown labels.
+  to OFX `trntype` codes, delegating to `transaction_type()` in
+  [transaction_types.py](src/ofxstatement_otp/transaction_types.py) — a `TRANS_MAP` shared
+  with `otp_legacy`, defaulting to `PAYMENT` for unknown labels.
 
 The legacy plugin [otp_legacy.py](src/ofxstatement_otp/otp_legacy.py) is the **frozen
 pre-2026-June** XLSX parser: data from row 2, columns A–L, `account_id` from cell `D8` and
@@ -99,9 +108,10 @@ Manual test helper lives in [manual_test/](manual_test/):
 
 - `python manual_test/generate_sample.py` — writes `manual_test/sample.xlsx`, a
   synthetic export with the correct structure (Tranzakciók sheet, metadata preamble,
-  a dynamically-located table header, columns A–K, two distinct accounts, plus a hidden
-  row and a no-booking-date row to exercise the skip paths). It is also the anonymized
-  fixture used by `tests/`.
+  a dynamically-located table header, columns A–K, a 16-digit current account, a longer
+  24-digit credit-card account, a declared-but-dormant account, a two-sided credit-card
+  repayment, plus a hidden row and two no-booking-date rows — `None` and `""` — to
+  exercise the skip paths). It is also the anonymized fixture used by `tests/`.
 - Then convert it the normal way:
   `ofxstatement convert -t otp manual_test/sample.xlsx out.ofx`
 
@@ -127,7 +137,12 @@ named config types, e.g. `[otp:checking] plugin=otp account=11111111` and
 - `_get_currency()` reads col K (`Devizanem`) but defaults to **HUF**; mixed-currency
   handling within one statement is untested.
 - start/end balance return `None` (not present in the export).
-- To support a new transaction kind, add an entry to the `trans_map` dict in
-  `_get_transaction_type()`.
+- To support a new transaction kind, add an entry to `TRANS_MAP` in
+  [transaction_types.py](src/ofxstatement_otp/transaction_types.py). Both the keys and the
+  lookups have their whitespace collapsed, because the export writes some descriptions with
+  doubled inner spaces (`QVIK  FIZETÉS`).
 - Without an `account` setting the statement mixes **all** accounts in the file (and
   `account_id` is just the first account seen); set `account` for a clean per-account OFX.
+- Bank-side account numbers change when a card is replaced — the `account` setting in
+  `~/Library/Application Support/ofxstatement/config.ini` has to be updated to match, and
+  the parser now errors out loudly when it no longer does.

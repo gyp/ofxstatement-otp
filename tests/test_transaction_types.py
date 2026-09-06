@@ -29,3 +29,26 @@ def test_both_plugins_delegate_to_the_shared_helper():
     assert otp.transaction_type is transaction_type
     assert otp_legacy.transaction_type is transaction_type
     assert isinstance(TRANS_MAP, dict)
+
+
+def test_doubled_inner_spaces_are_collapsed_before_lookup():
+    # The export writes some descriptions with doubled inner spaces.
+    assert transaction_type("QVIK  FIZETÉS  BANKON BELÜL") == "XFER"
+
+
+def test_keys_with_doubled_inner_spaces_still_match():
+    # The table itself carries such a description; normalising the lookup must
+    # not make its entry unreachable.
+    assert transaction_type("20TBE0561242 BÉT vétel  HB") == "PAYMENT"
+    assert transaction_type("20TBE0561242 BÉT vétel HB") == "PAYMENT"
+
+
+def test_credit_card_descriptions_from_the_2026_09_export():
+    assert transaction_type("BANKKÁRTYA ÉVES DÍJ") == "SRVCHG"
+    assert transaction_type("BANKKÁRTYA ÉVES DÍJ JÓV.") == "SRVCHG"
+    assert transaction_type("BANKKÁRTYÁVAL KAPCS. DÍJ") == "SRVCHG"
+    assert transaction_type("AZONNALI FIZETÉS BANKON BELÜL") == "XFER"
+    assert transaction_type("NAPKÖZBENI ÁTUTALÁS (CSOPORTOS)") == "XFER"
+    assert transaction_type("LAKÁS/JELZÁLOG HITEL TÖRL") == "XFER"
+    assert transaction_type("ÉRTÉKPAPÍR SZLADÍJ") == "SRVCHG"
+    assert transaction_type("PRÉMIUM NEXT SZOLGÁLTATÁS") == "SRVCHG"
