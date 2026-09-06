@@ -40,6 +40,32 @@ def sample_xlsx(tmp_path):
     return str(path)
 
 
+@pytest.fixture
+def undeclared_xlsx(tmp_path):
+    """A sample whose preamble omits the list of accounts.
+
+    Older exports (and any future reshuffle of the preamble) may not carry it,
+    and the parser has to stay usable without it.
+    """
+    workbook = generate_sample.build_workbook()
+    sheet = workbook[generate_sample.TRANSACTIONS_SHEET_NAME]
+    for row in range(1, sheet.max_row + 1):
+        # The label is the same word as the table's first column header, so
+        # skip the header row itself.
+        if (
+            sheet.cell(row=row, column=1).value == "Számlaszám"
+            and sheet.cell(row=row, column=2).value != "Ellenoldali számlaszám"
+        ):
+            sheet.cell(row=row, column=1).value = None
+            sheet.cell(row=row, column=2).value = None
+            break
+    else:  # pragma: no cover - the fixture would be meaningless
+        raise AssertionError("no account-list row found in the sample preamble")
+    path = tmp_path / "undeclared.xlsx"
+    workbook.save(path)
+    return str(path)
+
+
 def parse(filename, settings=None):
     parser = OtpXlsxParser(filename, settings or {})
     return parser.statement, parser.parse()
@@ -80,31 +106,35 @@ def test_no_openpyxl_default_style_warning(sample_xlsx):
 
 def test_unfiltered_includes_all_accounts(sample_xlsx):
     statement, result = parse(sample_xlsx)
-    # 8 data rows; the hidden row and the no-booking-date row are skipped.
-    assert len(result.lines) == 8
+    # 11 data rows; the hidden row and the no-booking-date rows are skipped.
+    assert len(result.lines) == 11
     accounts = {line.payee for line in result.lines}
     assert "MEDIA MARKT" in accounts  # a credit-account line is present
 
 
 def test_account_filter_selects_one_account(sample_xlsx):
     statement, result = parse(sample_xlsx, {"account": CHECKING})
-    assert len(result.lines) == 6  # only the checking-account rows
+    assert len(result.lines) == 7  # only the checking-account rows
     assert statement.account_id == CHECKING
     # The credit-only payee must not appear.
     assert all(line.payee != "MEDIA MARKT" for line in result.lines)
 
 
 def test_account_filter_is_substring_and_case_insensitive(sample_xlsx):
-    # CREDIT is "33333333-44444444"; match on a lowercase substring.
+    # CREDIT starts with "33333333"; match on a leading substring of it.
     _, result = parse(sample_xlsx, {"account": "33333333"})
-    assert len(result.lines) == 2
-    assert all(line.payee in {"MEDIA MARKT", "OTP Bank"} for line in result.lines)
+    assert len(result.lines) == 4
+    assert all(
+        line.payee in {"MEDIA MARKT", "OTP Bank", "PÉLDA JÁNOS", "BANKKÁRTYA ÉVES DÍJ"}
+        for line in result.lines
+    )
 
 
-def test_account_id_unset_when_filter_matches_nothing(sample_xlsx):
-    # A filter that matches no account must not pass itself off as the
-    # statement's account_id; it should be left unset.
-    statement, result = parse(sample_xlsx, {"account": "99999999"})
+def test_account_id_unset_when_filter_matches_nothing(undeclared_xlsx):
+    # Without the preamble's account list there is nothing to validate the
+    # filter against, so a non-matching filter still yields an empty statement.
+    # It must not pass itself off as the statement's account_id.
+    statement, result = parse(undeclared_xlsx, {"account": "99999999"})
     assert result.lines == []
     assert statement.account_id is None
 
@@ -185,3 +215,44 @@ def test_native_datetime_cell_is_parsed(sample_xlsx):
     mol = next(line for line in result.lines if line.payee == "MOL TOLTOALLOMAS")
     assert mol.date_user == datetime(2024, 1, 7, 18, 45, 0)
     assert mol.date == datetime(2024, 1, 7)
+
+
+def test_account_filter_matching_no_account_raises(sample_xlsx):
+    """A filter that matches none of the file's accounts is a config error.
+
+    The export lists every account in its preamble, so an `account` setting
+    that matches none of them (e.g. a card that has been replaced) must fail
+    loudly instead of silently producing an empty OFX.
+    """
+    with pytest.raises(ValueError) as excinfo:
+        parse(sample_xlsx, {"account": "99999999"})
+    message = str(excinfo.value)
+    assert "99999999" in message
+    assert CHECKING in message
+    assert CREDIT in message
+
+
+def test_declared_account_without_transactions_is_not_an_error(sample_xlsx):
+    """An account that exists but had no activity yields an empty statement."""
+    statement, result = parse(sample_xlsx, {"account": generate_sample.ACCOUNT_DORMANT})
+    assert result.lines == []
+    assert statement.account_id == generate_sample.ACCOUNT_DORMANT
+
+
+def test_account_id_is_the_full_declared_account_number(sample_xlsx):
+    """Filtering on a substring still reports the full account number."""
+    statement, _ = parse(sample_xlsx, {"account": "33333333"})
+    assert statement.account_id == CREDIT
+
+
+def test_trntype_ignores_doubled_spaces_in_description(sample_xlsx):
+    """The export writes some descriptions with doubled inner spaces."""
+    _, result = parse(sample_xlsx, {"account": CHECKING})
+    qvik = next(line for line in result.lines if line.payee == "Hitelkártyaszámla")
+    assert qvik.trntype == "XFER"
+
+
+def test_credit_card_fee_is_a_service_charge(sample_xlsx):
+    _, result = parse(sample_xlsx, {"account": CREDIT})
+    fee = next(line for line in result.lines if line.payee == "BANKKÁRTYA ÉVES DÍJ")
+    assert fee.trntype == "SRVCHG"

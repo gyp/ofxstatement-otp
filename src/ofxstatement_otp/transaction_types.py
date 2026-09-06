@@ -31,13 +31,37 @@ TRANS_MAP = {
     "PRIVÁT BANKI CSOMAGDÍJ": "SRVCHG",
     "20TBE0561242 BÉT vétel  HB": "PAYMENT",
     "EGYÉB BIZTOSÍTÁSI DÍJ": "PAYMENT",
+    "AZONNALI FIZETÉS BANKON BELÜL": "XFER",
+    "QVIK FIZETÉS": "XFER",
+    "QVIK FIZETÉS BANKON BELÜL": "XFER",
+    "NAPKÖZBENI ÁTUTALÁS (CSOPORTOS)": "XFER",
+    "LAKÁS/JELZÁLOG HITEL TÖRL": "XFER",
+    "BANKKÁRTYA ÉVES DÍJ": "SRVCHG",
+    "BANKKÁRTYA ÉVES DÍJ JÓV.": "SRVCHG",
+    "BANKKÁRTYÁVAL KAPCS. DÍJ": "SRVCHG",
+    "ÉRTÉKPAPÍR SZLADÍJ": "SRVCHG",
+    "PRÉMIUM NEXT SZOLGÁLTATÁS": "SRVCHG",
 }
+
+
+def _normalise(description: str) -> str:
+    """Collapse surrounding and doubled inner whitespace.
+
+    The export writes some descriptions with doubled inner spaces (e.g.
+    ``QVIK  FIZETÉS``), which would otherwise never match a table entry.
+    """
+    return " ".join(str(description).split())
+
+
+# Keys are normalised the same way as lookups, so a table entry that itself
+# carries doubled spaces stays reachable.
+_NORMALISED_MAP = {_normalise(key): value for key, value in TRANS_MAP.items()}
 
 
 def transaction_type(description: str) -> str:
     """Map an OTP transaction description to an OFX trntype.
 
-    The description is stripped before lookup; unknown descriptions fall back
-    to ``PAYMENT``.
+    Whitespace in the description is normalised before lookup; unknown
+    descriptions fall back to ``PAYMENT``.
     """
-    return TRANS_MAP.get(description.strip(), DEFAULT_TYPE)
+    return _NORMALISED_MAP.get(_normalise(description), DEFAULT_TYPE)

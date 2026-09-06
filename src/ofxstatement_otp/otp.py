@@ -3,8 +3,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 import logging
+import re
 import warnings
-from typing import Optional
+from typing import List, Optional
 
 from ofxstatement.plugin import Plugin
 from ofxstatement.parser import StatementParser
@@ -21,6 +22,10 @@ TRANSACTIONS_SHEET_NAME = "Tranzakciók"
 # with a few rows of statement metadata.
 LABEL_START_DATE = "Lekérdezés kezdete"
 LABEL_END_DATE = "Lekérdezés vége"
+# The preamble also lists every account the export covers, as a bracketed,
+# comma-separated list (the label is the same word as the table's first column
+# header, see HEADER_ACCOUNT_NO).
+LABEL_ACCOUNTS = "Számlaszám"
 
 # Column A header that marks the start of the transaction table. The same word
 # also appears as a metadata label in the preamble, so the header row is
@@ -92,6 +97,8 @@ class OtpXlsxParser(StatementParser):
         self.workbook = _load_workbook(self.filename)
         self.sheet = self.workbook[TRANSACTIONS_SHEET_NAME]
         self.header_row = self._find_header_row()
+        self.declared_accounts = self._get_declared_accounts()
+        self._check_account_filter()
 
         self.statement = Statement()
         self.statement.account_id = self._get_account_id()
@@ -139,6 +146,41 @@ class OtpXlsxParser(StatementParser):
             f"'{HEADER_ACCOUNT_NO}' / '{HEADER_PARTNER_ACCOUNT}') in sheet "
             f"'{TRANSACTIONS_SHEET_NAME}'"
         )
+
+    def _get_declared_accounts(self) -> List[str]:
+        """Return the account numbers listed in the preamble.
+
+        The export covers every account of the customer and names them all in
+        a single preamble cell, formatted as ``[12345678, 87654321]``.
+        """
+        value = self._get_preamble_value(LABEL_ACCOUNTS)
+        if not value:
+            return []
+        return [part for part in re.split(r"[,\s\[\]]+", str(value)) if part]
+
+    def _check_account_filter(self) -> None:
+        """Fail loudly when the ``account`` setting matches no account.
+
+        A statement filtered down to nothing is almost always a stale setting
+        -- a replaced card, say -- and silently writing an empty OFX hides it.
+        """
+        if not self.account_filter or not self.declared_accounts:
+            return
+        matches = [a for a in self.declared_accounts if self._included(a)]
+        if not matches:
+            raise ValueError(
+                f"The 'account' setting {self.account_filter!r} matches none of "
+                f"the accounts in {self.filename}: "
+                f"{', '.join(self.declared_accounts)}"
+            )
+        if len(matches) > 1:
+            logger.warning(
+                "The 'account' setting %r matches %d accounts (%s); the "
+                "statement will mix them.",
+                self.account_filter,
+                len(matches),
+                ", ".join(matches),
+            )
 
     def _included(self, account_no) -> bool:
         if not self.account_filter:
@@ -201,8 +243,14 @@ class OtpXlsxParser(StatementParser):
             )
 
     def _get_account_id(self) -> Optional[str]:
-        # When filtering, report the filtered account; otherwise fall back to
-        # the first account number that appears in the data.
+        # When filtering, report the matching account in full -- the setting
+        # itself is only a substring, and the account may have no transactions
+        # in the queried period at all.
+        if self.account_filter:
+            for account in self.declared_accounts:
+                if self._included(account):
+                    return account
+        # Otherwise fall back to the first account number in the data.
         for row in range(self.header_row + 1, self.sheet.max_row + 1):
             account_no = self.sheet.cell(row=row, column=1).value
             if not account_no:
